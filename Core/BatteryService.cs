@@ -4,6 +4,11 @@ namespace WinBattery.Core;
 
 public static class BatteryService
 {
+    // powercfg 缓存
+    private static BatteryInfo? _cachedInfo;
+    private static DateTime _lastCacheTime = DateTime.MinValue;
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(60);
+
     public static bool HasBattery()
     {
         try
@@ -30,35 +35,45 @@ public static class BatteryService
                 info.Manufacturer = obj["Manufacturer"]?.ToString();
                 info.SerialNumber = obj["PNPDeviceID"]?.ToString() ?? obj["DeviceID"]?.ToString();
                 info.Chemistry = obj["Chemistry"]?.ToString();
-                info.DesignCapacity = GetUShort(obj["DesignCapacity"]);
-                info.FullChargeCapacity = GetUShort(obj["FullChargeCapacity"]);
-                info.RemainingCapacity = GetUShort(obj["RemainingCapacity"]);
-                info.DesignVoltage = GetUShort(obj["DesignVoltage"]);
+                // WMI 返回的是 uint16，但值可能很大，用 GetUInt 避免溢出截断
+                info.DesignCapacity = GetUInt(obj["DesignCapacity"]);
+                info.FullChargeCapacity = GetUInt(obj["FullChargeCapacity"]);
+                info.RemainingCapacity = GetUInt(obj["RemainingCapacity"]);
+                info.DesignVoltage = GetUInt(obj["DesignVoltage"]);
                 info.EstimatedChargeRemaining = GetUInt(obj["EstimatedChargeRemaining"]);
                 info.EstimatedRunTime = GetUInt(obj["EstimatedRunTime"]);
                 info.BatteryStatus = GetUShort(obj["BatteryStatus"]);
                 info.PowerOnLine = GetBool(obj["PowerOnLine"]);
                 info.Charging = GetBool(obj["Charging"]);
                 info.Discharging = GetBool(obj["Discharging"]);
-                info.Temperature = GetUShort(obj["Temperature"]);
+                var rawTemp = GetUInt(obj["Temperature"]);
+                // WMI Temperature 通常是 0.1°C 单位，转换为摄氏度
+                if (rawTemp.HasValue && rawTemp.Value > 100)
+                    info.Temperature = rawTemp.Value / 10;
+                else
+                    info.Temperature = rawTemp;
                 info.CycleCount = GetUInt(obj["CycleCount"]);
-
-                // 若 FullChargeCapacity 缺失，尝试用 DesignCapacity 和 EstimatedChargeRemaining 估算
-                if (!info.FullChargeCapacity.HasValue && info.DesignCapacity.HasValue && info.EstimatedChargeRemaining.HasValue)
-                {
-                    // 不估算，保持缺失
-                }
             }
         }
         catch { }
 
-        // 尝试从 powercfg /batteryreport 或额外 WMI 获取循环次数和温度
-        TryEnrichFromPowercfg(info);
+        // 使用缓存的 powercfg 数据补充（避免每 5 秒都执行 powercfg）
+        EnrichFromCacheOrPowercfg(info);
         return info;
     }
 
-    private static void TryEnrichFromPowercfg(BatteryInfo info)
+    private static void EnrichFromCacheOrPowercfg(BatteryInfo info)
     {
+        // 如果缓存未过期，直接使用缓存补充
+        if (_cachedInfo != null && DateTime.Now - _lastCacheTime < CacheDuration)
+        {
+            if (!info.CycleCount.HasValue) info.CycleCount = _cachedInfo.CycleCount;
+            if (!info.Temperature.HasValue) info.Temperature = _cachedInfo.Temperature;
+            if (!info.FullChargeCapacity.HasValue) info.FullChargeCapacity = _cachedInfo.FullChargeCapacity;
+            if (!info.DesignCapacity.HasValue) info.DesignCapacity = _cachedInfo.DesignCapacity;
+            return;
+        }
+
         try
         {
             var tempPath = Path.Combine(Path.GetTempPath(), "wbattery_report.xml");
@@ -78,38 +93,44 @@ public static class BatteryService
                 var nsMgr = new System.Xml.XmlNamespaceManager(doc.NameTable);
                 nsMgr.AddNamespace("b", "http://schemas.microsoft.com/battery/2012");
 
+                // 更新缓存对象
+                _cachedInfo ??= new BatteryInfo();
+
                 // 尝试读取 CycleCount
-                if (!info.CycleCount.HasValue)
+                var cycleNode = doc.SelectSingleNode("//b:BatteryCycleCount", nsMgr);
+                if (cycleNode != null && uint.TryParse(cycleNode.InnerText, out var cc))
                 {
-                    var cycleNode = doc.SelectSingleNode("//b:BatteryCycleCount", nsMgr);
-                    if (cycleNode != null && uint.TryParse(cycleNode.InnerText, out var cc))
-                        info.CycleCount = cc;
+                    _cachedInfo.CycleCount = cc;
+                    if (!info.CycleCount.HasValue) info.CycleCount = cc;
                 }
 
                 // 尝试读取温度
-                if (!info.Temperature.HasValue)
+                var tempNode = doc.SelectSingleNode("//b:Temperature", nsMgr);
+                if (tempNode != null && uint.TryParse(tempNode.InnerText, out var t))
                 {
-                    var tempNode = doc.SelectSingleNode("//b:Temperature", nsMgr);
-                    if (tempNode != null && uint.TryParse(tempNode.InnerText, out var t))
-                        info.Temperature = (ushort)(t / 10); // 通常以 0.1K 为单位
+                    // 电池报告温度通常以 0.1K 为单位，转换为摄氏度
+                    var celsius = (t / 10.0) - 273.15;
+                    _cachedInfo.Temperature = (uint)Math.Round(celsius);
+                    if (!info.Temperature.HasValue) info.Temperature = _cachedInfo.Temperature;
                 }
 
                 // 尝试读取 FullChargeCapacity
-                if (!info.FullChargeCapacity.HasValue)
+                var fccNode = doc.SelectSingleNode("//b:FullChargeCapacity", nsMgr);
+                if (fccNode != null && uint.TryParse(fccNode.InnerText, out var fcc))
                 {
-                    var fccNode = doc.SelectSingleNode("//b:FullChargeCapacity", nsMgr);
-                    if (fccNode != null && uint.TryParse(fccNode.InnerText, out var fcc))
-                        info.FullChargeCapacity = (ushort)fcc;
+                    _cachedInfo.FullChargeCapacity = fcc;
+                    if (!info.FullChargeCapacity.HasValue) info.FullChargeCapacity = fcc;
                 }
 
                 // 尝试读取 DesignCapacity
-                if (!info.DesignCapacity.HasValue)
+                var dcNode = doc.SelectSingleNode("//b:DesignCapacity", nsMgr);
+                if (dcNode != null && uint.TryParse(dcNode.InnerText, out var dc))
                 {
-                    var dcNode = doc.SelectSingleNode("//b:DesignCapacity", nsMgr);
-                    if (dcNode != null && uint.TryParse(dcNode.InnerText, out var dc))
-                        info.DesignCapacity = (ushort)dc;
+                    _cachedInfo.DesignCapacity = dc;
+                    if (!info.DesignCapacity.HasValue) info.DesignCapacity = dc;
                 }
 
+                _lastCacheTime = DateTime.Now;
                 try { File.Delete(tempPath); } catch { }
             }
         }
@@ -128,6 +149,8 @@ public static class BatteryService
     {
         if (value == null) return null;
         if (value is uint u) return u;
+        if (value is int i) return (uint)i;
+        if (value is ushort us) return us;
         if (uint.TryParse(value.ToString(), out var result)) return result;
         return null;
     }
@@ -253,8 +276,16 @@ public static class BatteryService
         return list;
     }
 
+    // 功耗缓存
+    private static double? _cachedPower;
+    private static DateTime _lastPowerCacheTime = DateTime.MinValue;
+
     public static double? GetPowerNow(BatteryInfo info)
     {
+        // 使用缓存避免频繁调用 powercfg
+        if (_cachedPower.HasValue && DateTime.Now - _lastPowerCacheTime < CacheDuration)
+            return _cachedPower;
+
         try
         {
             // 尝试从电池报告获取当前放电/充电速率
@@ -279,8 +310,10 @@ public static class BatteryService
                 var rateNode = doc.SelectSingleNode("//b:RecentUsage/b:Usage[1]/b:Rate", nsMgr);
                 if (rateNode != null && int.TryParse(rateNode.InnerText, out var rate))
                 {
+                    _cachedPower = Math.Abs(rate) / 1000.0; // mW -> W
+                    _lastPowerCacheTime = DateTime.Now;
                     try { File.Delete(tempPath); } catch { }
-                    return Math.Abs(rate) / 1000.0; // mW -> W
+                    return _cachedPower;
                 }
 
                 try { File.Delete(tempPath); } catch { }
@@ -288,13 +321,7 @@ public static class BatteryService
         }
         catch { }
 
-        // 回退：通过电压和容量变化估算
-        if (info.DesignVoltage.HasValue && info.RemainingCapacity.HasValue)
-        {
-            // 这是一个粗略估算，假设典型笔记本电脑功耗范围
-            return null; // 不返回假数据
-        }
-        return null;
+        return null; // 不返回假数据
     }
 }
 

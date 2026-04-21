@@ -8,17 +8,17 @@ public class BatteryInfo
     public string? Manufacturer { get; set; }
     public string? SerialNumber { get; set; }
     public string? Chemistry { get; set; }
-    public ushort? DesignCapacity { get; set; }
-    public ushort? FullChargeCapacity { get; set; }
-    public ushort? RemainingCapacity { get; set; }
-    public ushort? DesignVoltage { get; set; }
+    public uint? DesignCapacity { get; set; }
+    public uint? FullChargeCapacity { get; set; }
+    public uint? RemainingCapacity { get; set; }
+    public uint? DesignVoltage { get; set; }
     public uint? EstimatedChargeRemaining { get; set; }
     public uint? EstimatedRunTime { get; set; }
     public ushort? BatteryStatus { get; set; }
     public bool? PowerOnLine { get; set; }
     public bool? Charging { get; set; }
     public bool? Discharging { get; set; }
-    public ushort? Temperature { get; set; }
+    public uint? Temperature { get; set; }
     public uint? CycleCount { get; set; }
 
     // 计算属性
@@ -27,7 +27,13 @@ public class BatteryInfo
         get
         {
             if (FullChargeCapacity.HasValue && DesignCapacity.HasValue && DesignCapacity.Value > 0)
-                return Math.Round((double)FullChargeCapacity.Value / DesignCapacity.Value * 100.0, 1);
+            {
+                var health = (double)FullChargeCapacity.Value / DesignCapacity.Value * 100.0;
+                // 数据校验：健康度不可能超过150%或低于0%
+                if (health > 150.0 || health < 0.0)
+                    return null;
+                return Math.Round(health, 1);
+            }
             return null;
         }
     }

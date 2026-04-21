@@ -32,8 +32,7 @@ public partial class DetailsPage : UserControl
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            AutoSize = true,
-            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+            AutoSize = true
         };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
@@ -65,18 +64,18 @@ public partial class DetailsPage : UserControl
             Text = I18nService.T(labelKey),
             Font = new Font("Microsoft YaHei", 10),
             Dock = DockStyle.Fill,
-            Padding = new Padding(4, 8, 4, 8)
+            Padding = new Padding(4, 10, 4, 10)
         };
         var lblValue = new Label
         {
             Text = value ?? I18nService.T("unknown"),
             Font = new Font("Microsoft YaHei", 10, FontStyle.Bold),
             Dock = DockStyle.Fill,
-            Padding = new Padding(4, 8, 4, 8),
+            Padding = new Padding(4, 10, 4, 10),
             TextAlign = System.Drawing.ContentAlignment.MiddleRight
         };
         table.RowCount++;
-        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         table.Controls.Add(lblLabel, 0, table.RowCount - 1);
         table.Controls.Add(lblValue, 1, table.RowCount - 1);
     }
@@ -94,7 +93,7 @@ public partial class DetailsPage : UserControl
         AddRow("serial", info.SerialNumber);
         AddRow("chemistry", info.GetChemistryText());
         AddRow("voltage", info.DesignVoltage.HasValue ? $"{info.DesignVoltage.Value / 1000.0:F1}V" : null);
-        AddRow("temperature", info.Temperature.HasValue ? $"{info.Temperature.Value / 10.0:F1}℃" : null);
+        AddRow("temperature", info.Temperature.HasValue ? $"{info.Temperature.Value}℃" : null);
         var power = BatteryService.GetPowerNow(info);
         AddRow("power_now", power.HasValue ? $"{power.Value:F1}W" : I18nService.T("unknown"));
         AddRow("design_capacity", info.DesignCapacity.HasValue ? $"{info.DesignCapacity.Value} mWh" : null);
