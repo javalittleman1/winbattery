@@ -7,6 +7,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -14,17 +17,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
+      - name: Compute version
+        id: version
+        shell: pwsh
+        run: |
+          $patch = git rev-list --count HEAD
+          $version = "1.0.$patch"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Computed version: $version"
+
       - name: Restore dependencies
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore /p:Version=${{ steps.version.outputs.version }}
 
       - name: Publish single-file exe
         run: |
@@ -36,6 +50,7 @@ jobs:
             /p:IncludeNativeLibrariesForSelfExtract=true `
             /p:DebugType=None `
             /p:DebugSymbols=false `
+            /p:Version=${{ steps.version.outputs.version }} `
             --output ./publish
 
       - name: Upload artifact
@@ -44,7 +59,18 @@ jobs:
           name: WinBattery
           path: ./publish/WinBattery.exe
 
-      - name: Create Release
+      - name: Create Release (master)
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: ./publish/WinBattery.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release (tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:

@@ -1,9 +1,23 @@
 using System.Management;
+using System.Runtime.InteropServices;
 
 namespace WinBattery.Core;
 
 public static class BatteryService
 {
+    [StructLayout(LayoutKind.Sequential)]
+    public class SYSTEM_POWER_STATUS
+    {
+        public byte ACLineStatus;
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte SystemStatusFlag;
+        public int BatteryLifeTime;
+        public int BatteryFullLifeTime;
+    }
+
+    [DllImport("kernel32.dll")]
+    static extern bool GetSystemPowerStatus(SYSTEM_POWER_STATUS lpSystemPowerStatus);
     // powercfg 缓存
     private static BatteryInfo? _cachedInfo;
     private static DateTime _lastCacheTime = DateTime.MinValue;
@@ -59,6 +73,37 @@ public static class BatteryService
 
         // 使用缓存的 powercfg 数据补充（避免每 5 秒都执行 powercfg）
         EnrichFromCacheOrPowercfg(info);
+
+        // 使用 Windows API 补充 WMI 可能缺失的电量、时间与状态数据
+        try
+        {
+            var sps = new SYSTEM_POWER_STATUS();
+            if (GetSystemPowerStatus(sps))
+            {
+                if (!info.EstimatedChargeRemaining.HasValue && sps.BatteryLifePercent <= 100)
+                    info.EstimatedChargeRemaining = sps.BatteryLifePercent;
+
+                if ((!info.EstimatedRunTime.HasValue || info.EstimatedRunTime.Value == 0xFFFFFFFF)
+                    && sps.BatteryLifeTime >= 0)
+                    info.EstimatedRunTime = (uint)(sps.BatteryLifeTime / 60);
+
+                // 推断充电/插电/放电状态
+                if (sps.ACLineStatus == 1)
+                {
+                    info.PowerOnLine = true;
+                    info.Discharging = false;
+                    info.Charging = (sps.BatteryFlag & 8) == 8;
+                }
+                else if (sps.ACLineStatus == 0)
+                {
+                    info.PowerOnLine = false;
+                    info.Charging = false;
+                    info.Discharging = true;
+                }
+            }
+        }
+        catch { }
+
         return info;
     }
 

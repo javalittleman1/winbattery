@@ -108,7 +108,15 @@ public partial class ChartPage : UserControl
             g.DrawLine(gridPen, x, rect.Top, x, rect.Bottom);
         }
 
-        if (chargeHistory.Count < 2) return;
+        if (chargeHistory.Count < 2)
+        {
+            using var hintFont = new Font("Microsoft YaHei", 11);
+            using var hintBrush = new SolidBrush(c.Text2);
+            var text = I18nService.T("no_chart_data");
+            var size = g.MeasureString(text, hintFont);
+            g.DrawString(text, hintFont, hintBrush, rect.Left + (rect.Width - size.Width) / 2, rect.Top + (rect.Height - size.Height) / 2);
+            return;
+        }
 
         // 绘制曲线
         using var linePen = new Pen(c.ChartLine, 2);

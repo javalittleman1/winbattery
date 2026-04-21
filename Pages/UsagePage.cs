@@ -50,10 +50,12 @@ public partial class UsagePage : UserControl
     {
         listPanel.Controls.Clear();
         var data = BatteryService.GetProcessPowerUsage();
+        var maxCpu = data.Count > 0 ? data.Max(x => x.CpuPercent) : 1;
+        if (maxCpu <= 0) maxCpu = 1;
         int y = 0;
         foreach (var item in data)
         {
-            var row = CreateRow(item.ProcessName, $"{item.PowerPercent}%", item.PowerPercent);
+            var row = CreateRow(item.ProcessName, $"{item.PowerPercent}%", item.CpuPercent, maxCpu);
             row.Location = new Point(0, y);
             row.Width = listPanel.Width - 32;
             row.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -63,7 +65,7 @@ public partial class UsagePage : UserControl
         ApplyTheme();
     }
 
-    private Panel CreateRow(string name, string percent, int value)
+    private Panel CreateRow(string name, string percent, int cpuValue, int maxCpu)
     {
         var c = ThemeService.Current;
         var panel = new Panel
@@ -100,16 +102,15 @@ public partial class UsagePage : UserControl
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
 
+        double ratio = Math.Min(cpuValue / (double)maxCpu, 1.0);
+        int fillWidth = Math.Max((int)(barBg.Width * ratio), 2);
+
         var barFill = new Panel
         {
             Height = 4,
             BackColor = c.Accent,
-            Width = (int)(barBg.Width * value / 100.0),
+            Width = fillWidth,
             Location = new Point(0, 0)
-        };
-        barFill.SizeChanged += (_, _) =>
-        {
-            barFill.Width = (int)(barBg.Width * value / 100.0);
         };
 
         barBg.Controls.Add(barFill);

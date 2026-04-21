@@ -74,6 +74,7 @@ public static class I18nService
             ["data_export"] = "导出数据",
             ["second"] = "秒",
             ["refresh_interval"] = "刷新间隔",
+            ["no_chart_data"] = "暂无足够数据，请稍等几分钟后刷新查看",
         },
         ["en"] = new Dictionary<string, string>
         {
@@ -141,6 +142,7 @@ public static class I18nService
             ["data_export"] = "Export Data",
             ["second"] = "s",
             ["refresh_interval"] = "Refresh Interval",
+            ["no_chart_data"] = "Not enough data yet. Please wait a few minutes and refresh.",
         }
     };
 

@@ -327,8 +327,6 @@ public partial class OverviewPage : UserControl
         {
             lblTipValue.Text = I18nService.T("tip_good");
         }
-
-        ApplyTheme();
     }
 
     private void RefreshTexts()
