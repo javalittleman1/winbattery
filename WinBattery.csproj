@@ -7,8 +7,17 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
-    <Version>1.0.0</Version>
   </PropertyGroup>
+
+  <!-- 构建前自动根据 git commit count 生成版本号 -->
+  <Target Name="SetVersion" BeforeTargets="BeforeBuild">
+    <Exec Command="git rev-list --count HEAD" ConsoleToMSBuild="true" WorkingDirectory="$(MSBuildProjectDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
+    </Exec>
+    <PropertyGroup>
+      <Version>1.0.$(GitCommitCount)</Version>
+    </PropertyGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="System.Management" Version="9.0.0" />

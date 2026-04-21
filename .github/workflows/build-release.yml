@@ -38,7 +38,7 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore /p:Version=${{ steps.version.outputs.version }}
+        run: dotnet build --configuration Release --no-restore
 
       - name: Publish single-file exe
         run: |
@@ -50,7 +50,6 @@ jobs:
             /p:IncludeNativeLibrariesForSelfExtract=true `
             /p:DebugType=None `
             /p:DebugSymbols=false `
-            /p:Version=${{ steps.version.outputs.version }} `
             --output ./publish
 
       - name: Upload artifact
