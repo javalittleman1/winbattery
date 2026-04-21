@@ -28,8 +28,8 @@ public partial class MainForm : Form
     public MainForm()
     {
         Text = I18nService.T("appName");
-        Size = new Size(960, 640);
-        MinimumSize = new Size(800, 500);
+        Size = new Size(960, 720);
+        MinimumSize = new Size(800, 560);
         StartPosition = FormStartPosition.CenterScreen;
         Icon = SystemIcons.Application;
 

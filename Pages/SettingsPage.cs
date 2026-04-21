@@ -170,9 +170,10 @@ public partial class SettingsPage : UserControl
         y += 36;
 
         // 版本号
+        var asmVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         lblVersion = new Label
         {
-            Text = "v1.0.0",
+            Text = $"v{asmVersion?.ToString(3) ?? "1.0.0"}",
             Font = new Font("Microsoft YaHei", 10),
             AutoSize = true,
             Location = new Point(0, y)
@@ -417,6 +418,7 @@ public partial class SettingsPage : UserControl
         lblSettingsTitle.Text = I18nService.T("settings");
         btnReport.Text = I18nService.T("generate_report");
         btnExport.Text = I18nService.T("data_export");
-        lblVersion.Text = "v1.0.0";
+        var asmVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        lblVersion.Text = $"v{asmVersion?.ToString(3) ?? "1.0.0"}";
     }
 }

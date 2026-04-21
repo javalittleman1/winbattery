@@ -85,7 +85,15 @@ public static class BatteryService
 
                 if ((!info.EstimatedRunTime.HasValue || info.EstimatedRunTime.Value == 0xFFFFFFFF)
                     && sps.BatteryLifeTime >= 0)
+                {
                     info.EstimatedRunTime = (uint)(sps.BatteryLifeTime / 60);
+                }
+                else if ((!info.EstimatedRunTime.HasValue || info.EstimatedRunTime.Value == 0xFFFFFFFF)
+                    && sps.BatteryLifeTime == -1 && info.Discharging == true)
+                {
+                    // 系统未提供剩余时间，尝试用剩余容量/当前功耗估算
+                    TryEstimateRunTime(info);
+                }
 
                 // 推断充电/插电/放电状态
                 if (sps.ACLineStatus == 1)
@@ -105,6 +113,24 @@ public static class BatteryService
         catch { }
 
         return info;
+    }
+
+    private static void TryEstimateRunTime(BatteryInfo info)
+    {
+        try
+        {
+            if (info.RemainingCapacity.HasValue && info.RemainingCapacity.Value > 0)
+            {
+                var power = GetPowerNow(info);
+                if (power.HasValue && power.Value > 0)
+                {
+                    var mins = (uint)(info.RemainingCapacity.Value / power.Value / 1000.0 * 60);
+                    if (mins > 0 && mins < 86400)
+                        info.EstimatedRunTime = mins;
+                }
+            }
+        }
+        catch { }
     }
 
     private static void EnrichFromCacheOrPowercfg(BatteryInfo info)
@@ -177,6 +203,44 @@ public static class BatteryService
 
                 _lastCacheTime = DateTime.Now;
                 try { File.Delete(tempPath); } catch { }
+
+                // 如果 XML 未提供 CycleCount，尝试从 HTML 报告提取
+                if (!info.CycleCount.HasValue)
+                {
+                    TryExtractCycleCountFromHtml(info);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private static void TryExtractCycleCountFromHtml(BatteryInfo info)
+    {
+        try
+        {
+            var htmlPath = Path.Combine(Path.GetTempPath(), "wbattery_report.html");
+            var psi = new System.Diagnostics.ProcessStartInfo("powercfg", "/batteryreport /output \"" + htmlPath + "\"")
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            proc?.WaitForExit(5000);
+
+            if (File.Exists(htmlPath))
+            {
+                var html = File.ReadAllText(htmlPath);
+                var match = System.Text.RegularExpressions.Regex.Match(
+                    html, @"Cycle\s*Count</td>\s*<td>(\d+)</td>",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success && uint.TryParse(match.Groups[1].Value, out var cc))
+                {
+                    _cachedInfo ??= new BatteryInfo();
+                    _cachedInfo.CycleCount = cc;
+                    info.CycleCount = cc;
+                }
+                try { File.Delete(htmlPath); } catch { }
             }
         }
         catch { }
@@ -310,7 +374,7 @@ public static class BatteryService
             foreach (var item in sorted)
             {
                 int percent = (int)Math.Round(item.Time * 100.0 / total);
-                list.Add(new ProcessPowerInfo { ProcessName = item.Name, PowerPercent = percent });
+                list.Add(new ProcessPowerInfo { ProcessName = item.Name, PowerPercent = percent, CpuPercent = percent });
             }
 
             var accounted = list.Sum(x => x.PowerPercent);

@@ -6,6 +6,8 @@ public partial class UsagePage : UserControl
 {
     private Label lblTitle;
     private Panel listPanel;
+    private ToolTip toolTip;
+    private Panel? selectedRow;
 
     public UsagePage()
     {
@@ -13,6 +15,7 @@ public partial class UsagePage : UserControl
         Dock = DockStyle.Fill;
         I18nService.LanguageChanged += RefreshTexts;
         ThemeService.ThemeChanged += ApplyTheme;
+        toolTip = new ToolTip();
         ApplyTheme();
     }
 
@@ -49,13 +52,15 @@ public partial class UsagePage : UserControl
     public void RefreshData()
     {
         listPanel.Controls.Clear();
+        selectedRow = null;
         var data = BatteryService.GetProcessPowerUsage();
         var maxCpu = data.Count > 0 ? data.Max(x => x.CpuPercent) : 1;
         if (maxCpu <= 0) maxCpu = 1;
         int y = 0;
         foreach (var item in data)
         {
-            var row = CreateRow(item.ProcessName, $"{item.PowerPercent}%", item.CpuPercent, maxCpu);
+            var tooltip = $"{item.ProcessName}\nCPU: {item.CpuPercent}%\nPower Share: {item.PowerPercent}%";
+            var row = CreateRow(item.ProcessName, $"{item.PowerPercent}%", item.CpuPercent, maxCpu, tooltip);
             row.Location = new Point(0, y);
             row.Width = listPanel.Width - 32;
             row.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -65,14 +70,15 @@ public partial class UsagePage : UserControl
         ApplyTheme();
     }
 
-    private Panel CreateRow(string name, string percent, int cpuValue, int maxCpu)
+    private Panel CreateRow(string name, string percent, int cpuValue, int maxCpu, string tooltipText)
     {
         var c = ThemeService.Current;
         var panel = new Panel
         {
             Height = 44,
             Dock = DockStyle.None,
-            Margin = new Padding(0, 0, 0, 1)
+            Margin = new Padding(0, 0, 0, 1),
+            Cursor = Cursors.Hand
         };
 
         var lblName = new Label
@@ -80,7 +86,8 @@ public partial class UsagePage : UserControl
             Text = name,
             Font = new Font("Microsoft YaHei", 10),
             AutoSize = true,
-            Location = new Point(4, 4)
+            Location = new Point(4, 4),
+            Cursor = Cursors.Hand
         };
 
         var lblPercent = new Label
@@ -89,7 +96,8 @@ public partial class UsagePage : UserControl
             Font = new Font("Microsoft YaHei", 10, FontStyle.Bold),
             AutoSize = true,
             Location = new Point(300, 4),
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Cursor = Cursors.Hand
         };
 
         // 进度条背景
@@ -118,7 +126,54 @@ public partial class UsagePage : UserControl
         panel.Controls.Add(lblPercent);
         panel.Controls.Add(lblName);
 
+        // Tooltip
+        toolTip.SetToolTip(panel, tooltipText);
+        toolTip.SetToolTip(lblName, tooltipText);
+        toolTip.SetToolTip(lblPercent, tooltipText);
+
+        // 点击选中交互
+        panel.Click += (_, _) => SelectRow(panel, lblName, lblPercent, barBg);
+        lblName.Click += (_, _) => SelectRow(panel, lblName, lblPercent, barBg);
+        lblPercent.Click += (_, _) => SelectRow(panel, lblName, lblPercent, barBg);
+
         return panel;
+    }
+
+    private void SelectRow(Panel panel, Label lblName, Label lblPercent, Panel barBg)
+    {
+        // 取消之前选中
+        if (selectedRow != null && selectedRow != panel)
+        {
+            ResetRowStyle(selectedRow);
+        }
+
+        // 如果点击的是已选中的，则取消选中
+        if (selectedRow == panel)
+        {
+            ResetRowStyle(panel);
+            selectedRow = null;
+            return;
+        }
+
+        // 设置新选中
+        selectedRow = panel;
+        panel.BackColor = Color.FromArgb(80, 80, 80);
+        lblName.ForeColor = Color.White;
+        lblPercent.ForeColor = Color.White;
+        barBg.BackColor = Color.FromArgb(40, Color.White);
+    }
+
+    private void ResetRowStyle(Panel panel)
+    {
+        var c = ThemeService.Current;
+        panel.BackColor = c.Card;
+        foreach (Control child in panel.Controls)
+        {
+            if (child is Label lbl)
+                lbl.ForeColor = c.Text;
+            else if (child is Panel bg)
+                bg.BackColor = Color.FromArgb(60, c.Text2);
+        }
     }
 
     private void ApplyTheme()

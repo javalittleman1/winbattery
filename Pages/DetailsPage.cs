@@ -11,6 +11,7 @@ public partial class DetailsPage : UserControl
     {
         InitializeComponent();
         Dock = DockStyle.Fill;
+        DoubleBuffered = true;
         I18nService.LanguageChanged += RefreshTexts;
         ThemeService.ThemeChanged += ApplyTheme;
         ApplyTheme();
@@ -100,8 +101,6 @@ public partial class DetailsPage : UserControl
         AddRow("full_capacity", info.FullChargeCapacity.HasValue ? $"{info.FullChargeCapacity.Value} mWh" : null);
         AddRow("cycle_count", info.CycleCount?.ToString());
         AddRow("battery_status", I18nService.T($"status_{info.GetStatusText().ToLowerInvariant()}") ?? info.GetStatusText());
-
-        ApplyTheme();
     }
 
     private void ApplyTheme()

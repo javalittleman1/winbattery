@@ -51,7 +51,12 @@ public class BatteryInfo
     {
         if (Charging == true) return "Charging";
         if (Discharging == true) return "Discharging";
-        if (PowerOnLine == true) return "PluggedIn";
+        if (PowerOnLine == true)
+        {
+            if (EstimatedChargeRemaining.HasValue && EstimatedChargeRemaining.Value >= 95)
+                return "FullyCharged";
+            return "PluggedIn";
+        }
         return "Unknown";
     }
 
