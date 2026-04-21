@@ -78,7 +78,8 @@ public partial class UsagePage : UserControl
             Height = 44,
             Dock = DockStyle.None,
             Margin = new Padding(0, 0, 0, 1),
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            Tag = "usageRow"
         };
 
         var lblName = new Label
@@ -118,7 +119,8 @@ public partial class UsagePage : UserControl
             Height = 4,
             BackColor = c.Accent,
             Width = fillWidth,
-            Location = new Point(0, 0)
+            Location = new Point(0, 0),
+            Tag = "barFill"
         };
 
         barBg.Controls.Add(barFill);
@@ -159,7 +161,9 @@ public partial class UsagePage : UserControl
         selectedRow = panel;
         panel.BackColor = Color.FromArgb(80, 80, 80);
         lblName.ForeColor = Color.White;
+        lblName.BackColor = Color.Transparent;
         lblPercent.ForeColor = Color.White;
+        lblPercent.BackColor = Color.Transparent;
         barBg.BackColor = Color.FromArgb(40, Color.White);
     }
 
@@ -170,7 +174,10 @@ public partial class UsagePage : UserControl
         foreach (Control child in panel.Controls)
         {
             if (child is Label lbl)
+            {
                 lbl.ForeColor = c.Text;
+                lbl.BackColor = Color.Transparent;
+            }
             else if (child is Panel bg)
                 bg.BackColor = Color.FromArgb(60, c.Text2);
         }
@@ -186,14 +193,18 @@ public partial class UsagePage : UserControl
 
     private void ApplyThemeRecursive(Control ctrl, ThemeColors c)
     {
+        if (ctrl is Panel panel && panel.Tag as string == "usageRow")
+            return; // 跳过动态创建的耗电排行行，避免破坏自定义样式
+
         ctrl.BackColor = c.Card;
         ctrl.ForeColor = c.Text;
         foreach (Control child in ctrl.Controls)
         {
             ApplyThemeRecursive(child, c);
-            if (child is Panel p && p.Controls.Count > 0 && p.Controls[0] is Panel bar)
+            // 只对进度条填充应用主题色
+            if (child is Panel p && p.Tag as string == "barFill")
             {
-                bar.BackColor = c.Accent;
+                p.BackColor = c.Accent;
             }
         }
     }

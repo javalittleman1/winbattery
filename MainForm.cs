@@ -31,7 +31,7 @@ public partial class MainForm : Form
         Size = new Size(960, 720);
         MinimumSize = new Size(800, 560);
         StartPosition = FormStartPosition.CenterScreen;
-        Icon = SystemIcons.Application;
+        Icon = CreateBatteryIcon();
 
         InitializeComponent();
         ApplyTheme();
@@ -305,5 +305,35 @@ public partial class MainForm : Form
         refreshTimer?.Stop();
         themeWatcherTimer?.Stop();
         base.OnFormClosing(e);
+    }
+
+    internal static Icon CreateBatteryIcon()
+    {
+        using var bmp = new Bitmap(32, 32);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.Clear(Color.Transparent);
+
+        // 电池外框
+        var bodyRect = new Rectangle(4, 9, 22, 14);
+        using var bodyBrush = new SolidBrush(Color.FromArgb(0, 150, 255));
+        using var bodyPen = new Pen(Color.White, 1.5f);
+        g.FillRectangle(bodyBrush, bodyRect);
+        g.DrawRectangle(bodyPen, bodyRect);
+
+        // 正极凸起
+        var capRect = new Rectangle(26, 13, 3, 6);
+        g.FillRectangle(bodyBrush, capRect);
+        g.DrawRectangle(bodyPen, capRect);
+
+        // 闪电符号
+        using var boltPen = new Pen(Color.White, 2f);
+        boltPen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+        boltPen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+        g.DrawLines(boltPen, new Point[] { new Point(16, 12), new Point(12, 17), new Point(18, 17), new Point(14, 22) });
+
+        var hIcon = bmp.GetHicon();
+        var icon = Icon.FromHandle(hIcon);
+        return icon;
     }
 }

@@ -21,6 +21,7 @@ public class FloatingForm : Form
         TopMost = true;
         DoubleBuffered = true;
         Padding = new Padding(8);
+        Icon = MainForm.CreateBatteryIcon();
 
         InitializeComponent();
         ApplyTheme();
