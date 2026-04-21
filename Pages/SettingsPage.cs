@@ -45,10 +45,8 @@ public partial class SettingsPage : UserControl
             Padding = new Padding(16),
             AutoScroll = true
         };
-        // 模拟历史数据
-        AddHistoryItem("2024-12-01", "95%");
-        AddHistoryItem("2025-01-01", "92%");
-        AddHistoryItem("2025-04-01", "90%");
+        // 加载真实历史数据
+        LoadHealthHistory();
 
         var cardHistory = new Panel { Dock = DockStyle.Top, Height = 200, Padding = new Padding(16) };
         var histTitlePanel = new Panel { Dock = DockStyle.Top, Height = 36 };
@@ -149,6 +147,7 @@ public partial class SettingsPage : UserControl
         {
             ConfigService.Config.FloatWindow = chkFloatWindow.Checked;
             ConfigService.Save();
+            ToggleFloatWindow(chkFloatWindow.Checked);
         };
         y += 36;
 
@@ -241,6 +240,29 @@ public partial class SettingsPage : UserControl
         };
     }
 
+    private void LoadHealthHistory()
+    {
+        historyPanel.Controls.Clear();
+        var items = HistoryService.GetHealthHistory();
+        if (items.Count == 0)
+        {
+            // 还没有历史记录，显示提示
+            var lblEmpty = new Label
+            {
+                Text = I18nService.T("unknown"),
+                Font = new Font("Microsoft YaHei", 10),
+                AutoSize = true,
+                Location = new Point(4, 4)
+            };
+            historyPanel.Controls.Add(lblEmpty);
+            return;
+        }
+        foreach (var (date, health) in items)
+        {
+            AddHistoryItem(date, health);
+        }
+    }
+
     private void AddHistoryItem(string date, string health)
     {
         var row = new Panel
@@ -300,21 +322,41 @@ public partial class SettingsPage : UserControl
         {
             var info = BatteryService.GetBatteryInfo();
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"WinBattery Export - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            sb.AppendLine($"Health: {info.HealthPercent}%");
-            sb.AppendLine($"Wear: {info.WearPercent}%");
-            sb.AppendLine($"Design Capacity: {info.DesignCapacity} mWh");
-            sb.AppendLine($"Full Charge Capacity: {info.FullChargeCapacity} mWh");
-            sb.AppendLine($"Cycle Count: {info.CycleCount}");
-            sb.AppendLine($"Status: {info.GetStatusText()}");
+            sb.AppendLine($"WinBattery {I18nService.T("data_export")} - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine($"{I18nService.T("battery_health")}: {info.HealthPercent?.ToString() ?? I18nService.T("unknown")}");
+            sb.AppendLine($"{I18nService.T("battery_wear")}: {info.WearPercent?.ToString() ?? I18nService.T("unknown")}");
+            sb.AppendLine($"{I18nService.T("design_capacity")}: {info.DesignCapacity?.ToString() ?? I18nService.T("unknown")} mWh");
+            sb.AppendLine($"{I18nService.T("full_capacity")}: {info.FullChargeCapacity?.ToString() ?? I18nService.T("unknown")} mWh");
+            sb.AppendLine($"{I18nService.T("cycle_count")}: {info.CycleCount?.ToString() ?? I18nService.T("unknown")}");
+            sb.AppendLine($"{I18nService.T("battery_status")}: {I18nService.T($"status_{info.GetStatusText().ToLowerInvariant()}") ?? info.GetStatusText()}");
+            sb.AppendLine($"{I18nService.T("manufacturer")}: {info.Manufacturer ?? I18nService.T("unknown")}");
+            sb.AppendLine($"{I18nService.T("battery_model")}: {info.Name ?? I18nService.T("unknown")}");
+            sb.AppendLine($"{I18nService.T("chemistry")}: {info.GetChemistryText()}");
 
             var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), $"WinBattery_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
             File.WriteAllText(path, sb.ToString());
-            MessageBox.Show($"Exported: {path}", I18nService.T("appName"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show($"{I18nService.T("data_export")}: {path}", I18nService.T("appName"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
             MessageBox.Show(ex.Message, I18nService.T("appName"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ToggleFloatWindow(bool show)
+    {
+        if (show)
+        {
+            if (Program.FloatingFormInstance == null || Program.FloatingFormInstance.IsDisposed)
+            {
+                Program.FloatingFormInstance = new FloatingForm();
+            }
+            Program.FloatingFormInstance.Show();
+            Program.FloatingFormInstance.RefreshData();
+        }
+        else
+        {
+            Program.FloatingFormInstance?.Hide();
         }
     }
 

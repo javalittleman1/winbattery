@@ -145,38 +145,37 @@ public static class BatteryService
         var list = new List<ProcessPowerInfo>();
         try
         {
-            using var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_Process");
-            var processes = new Dictionary<int, string>();
+            // 使用 WMI 性能计数器获取真实的进程 CPU 使用率
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT IDProcess, Name, PercentProcessorTime FROM Win32_PerfFormattedData_PerfProc_Process WHERE IDProcess > 0");
+            var data = new List<(string Name, int Cpu)>();
             foreach (ManagementObject obj in searcher.Get())
             {
-                var pid = Convert.ToInt32(obj["ProcessId"]);
                 var name = obj["Name"]?.ToString() ?? "Unknown";
-                processes[pid] = name;
+                var pid = Convert.ToInt32(obj["IDProcess"]);
+                var cpu = Convert.ToInt32(obj["PercentProcessorTime"]);
+                if (cpu > 0)
+                    data.Add((name, cpu));
             }
 
-            // 尝试使用 powercfg /energy 或 WMI 获取功耗数据（Win32_Process 无直接功耗字段）
-            // 使用 CPU 时间作为功耗代理指标
-            var sorted = processes
-                .Select(p => new { Pid = p.Key, Name = p.Value })
-                .Take(10)
-                .ToList();
-
-            // 模拟/代理数据：按常见进程名分配功耗比例
-            var known = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            // 获取进程友好名称映射
+            var friendlyMap = new Dictionary<int, string>();
+            try
             {
-                ["chrome.exe"] = 28,
-                ["msedge.exe"] = 22,
-                ["firefox.exe"] = 20,
-                ["Code.exe"] = 15,
-                ["devenv.exe"] = 14,
-                ["explorer.exe"] = 10,
-                ["dwm.exe"] = 8,
-                ["svchost.exe"] = 18,
-                ["System"] = 12,
-                ["powershell.exe"] = 5,
-                ["cmd.exe"] = 3,
-                ["notepad.exe"] = 2,
-            };
+                using var procSearcher = new ManagementObjectSearcher("SELECT ProcessId, Name FROM Win32_Process");
+                foreach (ManagementObject obj in procSearcher.Get())
+                {
+                    var pid = Convert.ToInt32(obj["ProcessId"]);
+                    var name = obj["Name"]?.ToString() ?? "Unknown";
+                    friendlyMap[pid] = name;
+                }
+            }
+            catch { }
+
+            // 按 CPU 使用率排序，取前 10
+            var sorted = data.OrderByDescending(x => x.Cpu).Take(10).ToList();
+            var totalCpu = sorted.Sum(x => x.Cpu);
+            if (totalCpu == 0) totalCpu = 1;
 
             var displayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -189,48 +188,113 @@ public static class BatteryService
                 ["dwm.exe"] = "Desktop Window Manager",
                 ["svchost.exe"] = "System Service Host",
                 ["System"] = "System Kernel",
+                ["Idle"] = "System Idle",
                 ["powershell.exe"] = "PowerShell",
                 ["cmd.exe"] = "Command Prompt",
                 ["notepad.exe"] = "Notepad",
+                ["searchindexer.exe"] = "Windows Search",
+                ["antimalwareserviceexecutable"] = "Windows Defender",
             };
 
-            foreach (var proc in sorted)
+            foreach (var item in sorted)
             {
-                var baseName = proc.Name;
-                if (known.TryGetValue(baseName, out var power))
+                var baseName = item.Name.Replace(".exe", "", StringComparison.OrdinalIgnoreCase) + ".exe";
+                if (!baseName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    baseName += ".exe";
+
+                var display = displayNames.TryGetValue(baseName, out var dn) ? dn : item.Name;
+                int percent = (int)Math.Round(item.Cpu * 100.0 / totalCpu);
+                list.Add(new ProcessPowerInfo { ProcessName = display, PowerPercent = percent, CpuPercent = item.Cpu });
+            }
+
+            // 补齐 Others
+            var accounted = list.Sum(x => x.PowerPercent);
+            if (accounted < 100 && accounted > 0)
+                list.Add(new ProcessPowerInfo { ProcessName = "Others", PowerPercent = 100 - accounted, CpuPercent = 0 });
+        }
+        catch (Exception ex)
+        {
+            // 如果 WMI 性能计数器不可用，回退到基础进程列表
+            list = GetFallbackProcessList();
+        }
+        return list.OrderByDescending(x => x.PowerPercent).ToList();
+    }
+
+    private static List<ProcessPowerInfo> GetFallbackProcessList()
+    {
+        var list = new List<ProcessPowerInfo>();
+        try
+        {
+            using var searcher = new ManagementObjectSearcher("SELECT Name, KernelModeTime, UserModeTime FROM Win32_Process");
+            var data = new List<(string Name, long Time)>();
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                var name = obj["Name"]?.ToString() ?? "Unknown";
+                var kt = Convert.ToInt64(obj["KernelModeTime"] ?? 0);
+                var ut = Convert.ToInt64(obj["UserModeTime"] ?? 0);
+                data.Add((name, kt + ut));
+            }
+
+            var sorted = data.OrderByDescending(x => x.Time).Take(10).ToList();
+            var total = sorted.Sum(x => x.Time);
+            if (total == 0) total = 1;
+
+            foreach (var item in sorted)
+            {
+                int percent = (int)Math.Round(item.Time * 100.0 / total);
+                list.Add(new ProcessPowerInfo { ProcessName = item.Name, PowerPercent = percent });
+            }
+
+            var accounted = list.Sum(x => x.PowerPercent);
+            if (accounted < 100 && accounted > 0)
+                list.Add(new ProcessPowerInfo { ProcessName = "Others", PowerPercent = 100 - accounted });
+        }
+        catch { }
+        return list;
+    }
+
+    public static double? GetPowerNow(BatteryInfo info)
+    {
+        try
+        {
+            // 尝试从电池报告获取当前放电/充电速率
+            var tempPath = Path.Combine(Path.GetTempPath(), "wbattery_power.xml");
+            var psi = new System.Diagnostics.ProcessStartInfo("powercfg", "/batteryreport /xml /output \"" + tempPath + "\"")
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            proc?.WaitForExit(5000);
+
+            if (File.Exists(tempPath))
+            {
+                var doc = new System.Xml.XmlDocument();
+                doc.Load(tempPath);
+                var nsMgr = new System.Xml.XmlNamespaceManager(doc.NameTable);
+                nsMgr.AddNamespace("b", "http://schemas.microsoft.com/battery/2012");
+
+                // 读取最近一条记录的速率
+                var rateNode = doc.SelectSingleNode("//b:RecentUsage/b:Usage[1]/b:Rate", nsMgr);
+                if (rateNode != null && int.TryParse(rateNode.InnerText, out var rate))
                 {
-                    var display = displayNames.TryGetValue(baseName, out var dn) ? dn : baseName;
-                    list.Add(new ProcessPowerInfo { ProcessName = display, PowerPercent = power });
+                    try { File.Delete(tempPath); } catch { }
+                    return Math.Abs(rate) / 1000.0; // mW -> W
                 }
-            }
 
-            if (list.Count == 0)
-            {
-                // 兜底数据
-                list.Add(new ProcessPowerInfo { ProcessName = "Chrome Browser", PowerPercent = 32 });
-                list.Add(new ProcessPowerInfo { ProcessName = "System Kernel", PowerPercent = 18 });
-                list.Add(new ProcessPowerInfo { ProcessName = "VS Code", PowerPercent = 14 });
-                list.Add(new ProcessPowerInfo { ProcessName = "Desktop Window Manager", PowerPercent = 9 });
-                list.Add(new ProcessPowerInfo { ProcessName = "Others", PowerPercent = 27 });
-            }
-            else
-            {
-                // 补齐 Others
-                var total = list.Sum(x => x.PowerPercent);
-                if (total < 100)
-                    list.Add(new ProcessPowerInfo { ProcessName = "Others", PowerPercent = 100 - total });
-            }
-
-            // 归一化排序
-            var sum = list.Sum(x => x.PowerPercent);
-            if (sum > 0)
-            {
-                foreach (var item in list)
-                    item.PowerPercent = (int)Math.Round(item.PowerPercent * 100.0 / sum);
+                try { File.Delete(tempPath); } catch { }
             }
         }
         catch { }
-        return list.OrderByDescending(x => x.PowerPercent).ToList();
+
+        // 回退：通过电压和容量变化估算
+        if (info.DesignVoltage.HasValue && info.RemainingCapacity.HasValue)
+        {
+            // 这是一个粗略估算，假设典型笔记本电脑功耗范围
+            return null; // 不返回假数据
+        }
+        return null;
     }
 }
 
@@ -238,4 +302,5 @@ public class ProcessPowerInfo
 {
     public string ProcessName { get; set; } = "";
     public int PowerPercent { get; set; }
+    public int CpuPercent { get; set; }
 }

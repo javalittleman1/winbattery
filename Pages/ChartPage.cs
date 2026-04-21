@@ -9,8 +9,7 @@ public partial class ChartPage : UserControl
     private Label lblLastChargeTitle;
     private Label lblLastChargeValue;
 
-    // 模拟历史数据
-    private readonly List<int> chargeHistory = new();
+    private List<int> chargeHistory = new();
 
     public ChartPage()
     {
@@ -19,10 +18,8 @@ public partial class ChartPage : UserControl
         I18nService.LanguageChanged += RefreshTexts;
         ThemeService.ThemeChanged += ApplyTheme;
 
-        // 生成模拟数据
-        var rand = new Random(42);
-        for (int i = 0; i < 36; i++)
-            chargeHistory.Add(20 + (int)(i * 2.2) + rand.Next(-3, 4));
+        // 加载真实历史数据
+        chargeHistory = HistoryService.GetRecentChargeHistory(3);
         ApplyTheme();
     }
 

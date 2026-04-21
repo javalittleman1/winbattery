@@ -283,6 +283,8 @@ public partial class MainForm : Form
             pageOverview.RefreshData(info);
             pageDetails.RefreshData(info);
             pageChart.RefreshData(info);
+            Program.FloatingFormInstance?.RefreshData();
+            HistoryService.AppendCurrent(info);
         };
         refreshTimer.Start();
 

@@ -95,7 +95,8 @@ public partial class DetailsPage : UserControl
         AddRow("chemistry", info.GetChemistryText());
         AddRow("voltage", info.DesignVoltage.HasValue ? $"{info.DesignVoltage.Value / 1000.0:F1}V" : null);
         AddRow("temperature", info.Temperature.HasValue ? $"{info.Temperature.Value / 10.0:F1}℃" : null);
-        AddRow("power_now", "12.5W"); // WMI 无直接功耗字段，使用代理
+        var power = BatteryService.GetPowerNow(info);
+        AddRow("power_now", power.HasValue ? $"{power.Value:F1}W" : I18nService.T("unknown"));
         AddRow("design_capacity", info.DesignCapacity.HasValue ? $"{info.DesignCapacity.Value} mWh" : null);
         AddRow("full_capacity", info.FullChargeCapacity.HasValue ? $"{info.FullChargeCapacity.Value} mWh" : null);
         AddRow("cycle_count", info.CycleCount?.ToString());
