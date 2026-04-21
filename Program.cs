@@ -8,11 +8,18 @@ static class Program
     public static FloatingForm? FloatingFormInstance { get; set; }
 
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
         ConfigService.Load();
         MainFormInstance = new MainForm();
+
+        var pageArg = args.FirstOrDefault(a => a.StartsWith("--page="));
+        if (pageArg != null)
+        {
+            var page = pageArg[("--page=".Length)..];
+            MainFormInstance.Shown += (_, _) => MainFormInstance.SwitchToPage(page);
+        }
 
         if (ConfigService.Config.FloatWindow)
         {

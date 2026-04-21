@@ -181,6 +181,8 @@ public partial class MainForm : Form
         }
     }
 
+    internal void SwitchToPage(string page) => SwitchPage(page);
+
     private void SwitchPage(string page)
     {
         currentPage = page;

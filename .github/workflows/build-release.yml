@@ -38,7 +38,7 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore /p:Version=${{ steps.version.outputs.version }}
 
       - name: Publish single-file exe
         run: |
@@ -50,7 +50,56 @@ jobs:
             /p:IncludeNativeLibrariesForSelfExtract=true `
             /p:DebugType=None `
             /p:DebugSymbols=false `
+            /p:Version=${{ steps.version.outputs.version }} `
             --output ./publish
+
+      - name: Generate release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $lastTag = git describe --tags --abbrev=0 2>$null
+          if (-not $lastTag) {
+            $range = "HEAD"
+          } else {
+            $range = "$lastTag..HEAD"
+          }
+          $commits = git log --pretty=format:"%s" $range | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+
+          $features = @()
+          $fixes = @()
+          $others = @()
+          foreach ($c in $commits) {
+            if ($c -match "^(feat|add|新增|增加)") { $features += $c }
+            elseif ($c -match "^(fix|修复|修正|bugfix)") { $fixes += $c }
+            else { $others += $c }
+          }
+
+          $body = @("## 更新内容", "")
+          if ($features.Count -gt 0) {
+            $body += "### 新增功能"
+            foreach ($f in $features) { $body += "- $f" }
+            $body += ""
+          }
+          if ($fixes.Count -gt 0) {
+            $body += "### 问题修复"
+            foreach ($f in $fixes) { $body += "- $f" }
+            $body += ""
+          }
+          if ($others.Count -gt 0) {
+            $body += "### 其他优化"
+            foreach ($f in $others) { $body += "- $f" }
+            $body += ""
+          }
+          $body += @("## 安装说明", "下载 `WinBattery.exe` 即可直接运行，无需安装 .NET 运行时。", "")
+          $body += @("## 系统要求", "- Windows 10 / Windows 11", "- 64 位系统")
+
+          $bodyText = $body -join "`n"
+          # Write multiline output using EOF syntax
+          $eof = "EOF_$(Get-Random)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "body<<$eof"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value $bodyText
+          Add-Content -Path $env:GITHUB_OUTPUT -Value $eof
+          Write-Host "Release notes generated."
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -64,8 +113,8 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
+          body: ${{ steps.notes.outputs.body }}
           files: ./publish/WinBattery.exe
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

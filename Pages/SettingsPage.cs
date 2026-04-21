@@ -170,10 +170,9 @@ public partial class SettingsPage : UserControl
         y += 36;
 
         // 版本号
-        var asmVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         lblVersion = new Label
         {
-            Text = $"v{asmVersion?.ToString(3) ?? "1.0.0"}",
+            Text = GetRuntimeVersion(),
             Font = new Font("Microsoft YaHei", 10),
             AutoSize = true,
             Location = new Point(0, y)
@@ -418,7 +417,30 @@ public partial class SettingsPage : UserControl
         lblSettingsTitle.Text = I18nService.T("settings");
         btnReport.Text = I18nService.T("generate_report");
         btnExport.Text = I18nService.T("data_export");
+        lblVersion.Text = GetRuntimeVersion();
+    }
+
+    private static string GetRuntimeVersion()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("git", "rev-list --count HEAD")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = System.Windows.Forms.Application.StartupPath
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc != null && proc.WaitForExit(3000))
+            {
+                var count = proc.StandardOutput.ReadToEnd().Trim();
+                if (int.TryParse(count, out var c) && c > 0)
+                    return $"v1.0.{c}";
+            }
+        }
+        catch { }
         var asmVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        lblVersion.Text = $"v{asmVersion?.ToString(3) ?? "1.0.0"}";
+        return $"v{asmVersion?.ToString(3) ?? "1.0.0"}";
     }
 }
