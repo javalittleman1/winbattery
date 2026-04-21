@@ -1,0 +1,14 @@
+# Build results
+bin/
+obj/
+
+# VS
+.vs/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# Others
+*.log
